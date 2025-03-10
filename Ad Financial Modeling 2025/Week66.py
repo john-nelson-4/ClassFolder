@@ -3,21 +3,37 @@ print("\n🚀 Script started...")
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
+from config import API_KEY  # Import API key from config.py
 
-# 🔹 Enter your Alpha Vantage API Key here
-API_KEY = API_KEY = "EYJDZ6HFWO4REUT10U4"
+# 🔹 Using Alpha Vantage API Key from config.py
 
 # Function to fetch stock data
 def get_stock_data(symbol):
     """Fetch historical stock prices from Alpha Vantage."""
     print(f"\n📡 Fetching data for {symbol}...")
     
-    url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol={symbol}&apikey={API_KEY}&outputsize=compact"
-    response = requests.get(url)
-    data = response.json()
+    try:
+        url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={API_KEY}&outputsize=compact"
+        response = requests.get(url)
+        data = response.json()
 
-    if "Time Series (Daily)" not in data:
-        print(f"❌ Error: Could not fetch data for {symbol}")
+        # Check for error messages in the API response
+        if "Error Message" in data:
+            print(f"❌ Error: {data['Error Message']}")
+            return None
+        elif "Note" in data:
+            print(f"⚠️ API Note: {data['Note']}")
+            # Continue processing if it's just a warning about API call frequency
+        
+        if "Time Series (Daily)" not in data:
+            print(f"❌ Error: Could not fetch data for {symbol}")
+            print(f"API Response: {data}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network Error: {e}")
+        return None
+    except ValueError as e:
+        print(f"❌ JSON Parsing Error: {e}")
         return None
 
     df = pd.DataFrame.from_dict(data["Time Series (Daily)"], orient="index")
@@ -34,7 +50,7 @@ def get_stock_data(symbol):
 def calculate_daily_returns(data):
     """Calculate daily percentage returns."""
     print("\n📊 Calculating daily returns...")
-    daily_returns = data["5. adjusted close"].pct_change().dropna()
+    daily_returns = data["4. close"].pct_change().dropna()
     print(daily_returns.head())  # Print sample returns
     return daily_returns
 
@@ -42,8 +58,8 @@ def calculate_daily_returns(data):
 def calculate_moving_averages(df, short_window=5, long_window=20):
     """Calculate moving averages."""
     print("\n📈 Calculating Moving Averages...")
-    short_ma = df["5. adjusted close"].rolling(window=short_window).mean()
-    long_ma = df["5. adjusted close"].rolling(window=long_window).mean()
+    short_ma = df["4. close"].rolling(window=short_window).mean()
+    long_ma = df["4. close"].rolling(window=long_window).mean()
     return short_ma, long_ma
 
 # Function to generate trading signals
@@ -58,7 +74,14 @@ def generate_trading_signal(short_ma, long_ma):
 def calculate_portfolio_value(data, holdings):
     """Calculate total portfolio value."""
     print("\n💰 Calculating portfolio value...")
-    total_value = sum(holdings[ticker] * data[ticker]["5. adjusted close"].iloc[-1] for ticker in holdings)
+    total_value = 0
+    
+    for ticker in holdings:
+        if ticker in data and data[ticker] is not None:
+            total_value += holdings[ticker] * data[ticker]["4. close"].iloc[-1]
+        else:
+            print(f"⚠️ Warning: No data available for {ticker}, skipping in portfolio calculation")
+    
     print(f"📌 Total Portfolio Value: ${total_value:.2f}")
     return total_value
 
@@ -76,7 +99,7 @@ def plot_stock(data, short_ma, long_ma, ticker):
     """Plot stock prices with moving averages."""
     print(f"\n📈 Plotting {ticker} stock price and moving averages...")
     plt.figure(figsize=(12,6))
-    plt.plot(data["5. adjusted close"], label=f"{ticker} Price", color="blue")
+    plt.plot(data["4. close"], label=f"{ticker} Price", color="blue")
     plt.plot(short_ma, label="5-day MA", linestyle="--", color="red")
     plt.plot(long_ma, label="20-day MA", linestyle="--", color="green")
     plt.legend()
